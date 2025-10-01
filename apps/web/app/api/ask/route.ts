@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import pLimit from 'p-limit';
 import * as cheerio from 'cheerio';
-import { loadSeedDocuments } from '../../../../lib/knowledge';
+import { loadSeedDocuments } from "../../../lib/knowledge";
+
 
 type RankedDoc = {
   url: string;
