@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useState } from "react";
+import { useState } from "react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -18,44 +18,6 @@ type ChatMessage = {
   role: "user" | "assistant";
   content: string;
   sources?: Array<{ id: number; url: string; title: string }>;
-};
-
-const markdownComponents = {
-  p: ({ children }: { children: ReactNode }) => (
-    <Typography variant="body2" sx={{ color: "rgb(215,220,235)", mb: 1 }}>
-      {children}
-    </Typography>
-  ),
-  strong: ({ children }: { children: ReactNode }) => (
-    <Typography component="span" sx={{ fontWeight: 700, color: "#f5f5ff" }}>
-      {children}
-    </Typography>
-  ),
-  ul: ({ children }: { children: ReactNode }) => (
-    <ul style={{ paddingLeft: "1.25rem", margin: "0 0 0.75rem" }}>{children}</ul>
-  ),
-  ol: ({ children }: { children: ReactNode }) => (
-    <ol style={{ paddingLeft: "1.25rem", margin: "0 0 0.75rem" }}>{children}</ol>
-  ),
-  li: ({ children }: { children: ReactNode }) => (
-    <li style={{ marginBottom: "0.35rem" }}>
-      <Typography variant="body2" component="span" sx={{ color: "rgb(215,220,235)" }}>
-        {children}
-      </Typography>
-    </li>
-  ),
-  a: ({ href, children }: { href?: string; children: ReactNode }) => (
-    <Typography
-      component="a"
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      variant="body2"
-      sx={{ color: "rgb(115,205,255)" }}
-    >
-      {children}
-    </Typography>
-  ),
 };
 
 export function ChatSection() {
@@ -171,9 +133,17 @@ export function ChatSection() {
                   {message.role === "user" ? "You" : "Nium Copilot"}
                 </Typography>
                 {message.role === "assistant" ? (
-                  <ReactMarkdown rehypePlugins={[rehypeRaw]} components={markdownComponents}>
-                    {message.content}
-                  </ReactMarkdown>
+                  <Box
+                    sx={{
+                      "& p": { color: "rgb(215,220,235)", mb: 1 },
+                      "& strong": { fontWeight: 700, color: "#f5f5ff" },
+                      "& ul, & ol": { color: "rgb(215,220,235)", pl: 3, mb: 1 },
+                      "& li": { mb: "0.35rem" },
+                      "& a": { color: "rgb(115,205,255)" },
+                    }}
+                  >
+                    <ReactMarkdown rehypePlugins={[rehypeRaw]}>{message.content}</ReactMarkdown>
+                  </Box>
                 ) : (
                   <Typography variant="body2" sx={{ whiteSpace: "pre-line" }}>
                     {message.content}
