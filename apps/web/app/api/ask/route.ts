@@ -1,9 +1,7 @@
-import { NextResponse } from 'next/server';
-import OpenAI from 'openai';
-import pLimit from 'p-limit';
-import * as cheerio from 'cheerio';
-import { loadSeedDocuments } from "../../../lib/knowledge";
-
+import { NextResponse } from "next/server";
+import OpenAI from "openai";
+import * as cheerio from "cheerio";
+import { loadSeedDocuments, type KnowledgeDoc } from "../../../lib/knowledge";
 
 type RankedDoc = {
   url: string;
@@ -14,7 +12,7 @@ type RankedDoc = {
 
 const FETCH_CONCURRENCY = 3;
 const MAX_CONTEXT_DOCS = 4;
-const FETCH_TIMEOUT_MS = 10000;
+const FETCH_TIMEOUT_MS = 10_000;
 const MAX_HTML_LENGTH = 250_000;
 
 function tokenize(input: string): string[] {
@@ -28,7 +26,9 @@ function scoreText(text: string, tokens: string[]): number {
   const lower = text.toLowerCase();
   return tokens.reduce((score, token) => {
     if (!token) return score;
-    const matches = lower.match(new RegExp(`\\b${token.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}\\b`, 'g'));
+    const matches = lower.match(
+      new RegExp(`\\b${token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g")
+    );
     return score + (matches?.length ?? 0);
   }, 0);
 }
@@ -61,8 +61,8 @@ async function fetchHtml(url: string): Promise<string | null> {
     const response = await fetch(url, {
       signal: controller.signal,
       headers: {
-        'user-agent': 'Nium-intelligence-demo/1.0 (https://vercel.com)',
-        accept: 'text/html,application/xhtml+xml',
+        "user-agent": "Nium-intelligence-demo/1.0 (https://vercel.com)",
+        accept: "text/html,application/xhtml+xml",
       },
     });
     if (!response.ok) {
@@ -81,8 +81,8 @@ async function fetchAndRank(url: string, tokens: string[]): Promise<RankedDoc | 
   const html = await fetchHtml(url);
   if (!html) return null;
   const $ = cheerio.load(html);
-  const title = $('title').text().trim() || url;
-  const bodyText = $('main').text().trim() || $('body').text().trim();
+  const title = $("title").text().trim() || url;
+  const bodyText = $("main").text().trim() || $("body").text().trim();
   if (!bodyText) return null;
   const score = scoreText(bodyText, tokens);
   if (score === 0) return null;
@@ -90,81 +90,111 @@ async function fetchAndRank(url: string, tokens: string[]): Promise<RankedDoc | 
   return { url, title, snippet, score };
 }
 
+async function processDocuments(
+  docs: KnowledgeDoc[],
+  tokens: string[],
+  concurrency = FETCH_CONCURRENCY
+): Promise<RankedDoc[]> {
+  const results: RankedDoc[] = [];
+  let cursor = 0;
+
+  async function worker() {
+    while (cursor < docs.length) {
+      const current = cursor++;
+      const rank = await fetchAndRank(docs[current].url, tokens);
+      if (rank) results.push(rank);
+    }
+  }
+
+  const workers = Array(Math.min(concurrency, docs.length))
+    .fill(null)
+    .map(() => worker());
+
+  await Promise.all(workers);
+  return results;
+}
+
 export async function POST(request: Request) {
-  const { question } = await request.json().catch(() => ({ question: '' }));
-  if (!question || typeof question !== 'string') {
-    return NextResponse.json(
-      { error: 'Question is required.' },
-      { status: 400 }
-    );
-  }
+  try {
+    const { question } = await request.json().catch(() => ({ question: "" }));
+    if (!question || typeof question !== "string") {
+      return NextResponse.json({ error: "Question is required." }, { status: 400 });
+    }
 
-  if (!process.env.OPENAI_API_KEY) {
-    return NextResponse.json(
-      { error: 'OPENAI_API_KEY not configured.' },
-      { status: 500 }
-    );
-  }
+    if (!process.env.OPENAI_API_KEY) {
+      return NextResponse.json(
+        { error: "OPENAI_API_KEY not configured." },
+        { status: 500 }
+      );
+    }
 
-  const seeds = loadSeedDocuments(60);
-  if (!seeds.length) {
-    return NextResponse.json(
-      { error: 'No seed documents available. Ensure the crawl CSV is uploaded.' },
-      { status: 500 }
-    );
-  }
+    const seeds = loadSeedDocuments(60);
+    if (!seeds.length) {
+      return NextResponse.json(
+        { error: "No seed documents available. Ensure the crawl CSV is uploaded." },
+        { status: 500 }
+      );
+    }
 
-  const tokens = tokenize(question).filter((token) => token.length > 2);
-  const limiter = pLimit(FETCH_CONCURRENCY);
-
-  const ranked = (
-    await Promise.all(
-      seeds.map((doc) => limiter(() => fetchAndRank(doc.url, tokens)))
+    const tokens = tokenize(question).filter((token) => token.length > 2);
+    const ranked = (
+      await processDocuments(seeds, tokens)
     )
-  )
-    .filter((item): item is RankedDoc => Boolean(item))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, MAX_CONTEXT_DOCS);
+      .sort((a, b) => b.score - a.score)
+      .slice(0, MAX_CONTEXT_DOCS);
 
-  if (!ranked.length) {
+    if (!ranked.length) {
+      return NextResponse.json(
+        {
+          answer:
+            "I couldn't find relevant Nium documentation for that question yet. Try a different phrasing or add a keyword from the docs.",
+          sources: [],
+        },
+        { status: 200 }
+      );
+    }
+
+    const context = ranked
+      .map(
+        (doc, index) =>
+          `Source ${index + 1}: ${doc.title}\nURL: ${doc.url}\nExcerpt: ${doc.snippet}`
+      )
+      .join("\n\n");
+
+    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+    const completion = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.2,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are an internal knowledge assistant for Nium. Answer using the provided context. Include concise bullet points when helpful. Cite sources as [1](URL). If the context is insufficient, say so and suggest next steps.",
+        },
+        {
+          role: "user",
+          content: `Question: ${question}\n\nContext:\n${context}`,
+        },
+      ],
+    });
+
+    const answer = completion.choices[0]?.message?.content ?? "No answer generated.";
+
+    return NextResponse.json({
+      answer,
+      sources: ranked.map((doc, idx) => ({
+        id: idx + 1,
+        url: doc.url,
+        title: doc.title,
+      })),
+    });
+  } catch (error) {
+    console.error("ask route failed", error);
+    const message = error instanceof Error ? error.message : "Unexpected error";
     return NextResponse.json(
-      {
-        answer: "I couldn't find relevant Nium documentation for that question yet. Try a different phrasing or add a keyword from the docs.",
-        sources: [],
-      },
-      { status: 200 }
+      { error: `Assistant failed: ${message}` },
+      { status: 500 }
     );
   }
-
-  const context = ranked
-    .map((doc, index) => `Source ${index + 1}: ${doc.title}\nURL: ${doc.url}\nExcerpt: ${doc.snippet}`)
-    .join('\n\n');
-
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-  const completion = await client.chat.completions.create({
-    model: 'gpt-4o-mini',
-    temperature: 0.2,
-    messages: [
-      {
-        role: 'system',
-        content: 'You are an internal knowledge assistant for Nium. Answer using the provided context. Include concise bullet points when helpful. Cite sources as [1](URL). If the context is insufficient, say so and suggest next steps.',
-      },
-      {
-        role: 'user',
-        content: `Question: ${question}\n\nContext:\n${context}`,
-      },
-    ],
-  });
-
-  const answer = completion.choices[0]?.message?.content ?? 'No answer generated.';
-
-  return NextResponse.json({
-    answer,
-    sources: ranked.map((doc, idx) => ({
-      id: idx + 1,
-      url: doc.url,
-      title: doc.title,
-    })),
-  });
 }
