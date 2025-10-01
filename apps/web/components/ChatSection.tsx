@@ -34,7 +34,7 @@ export function ChatSection() {
     setError(null);
     setQuestion("");
 
-        try {
+    try {
       const response = await fetch("/api/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -56,7 +56,6 @@ export function ChatSection() {
           sources: data.sources ?? [],
         },
       ]);
-
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unexpected error");
     } finally {
