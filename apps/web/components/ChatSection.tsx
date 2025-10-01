@@ -34,16 +34,18 @@ export function ChatSection() {
     setError(null);
     setQuestion("");
 
-    try {
+        try {
       const response = await fetch("/api/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: newQuestion }),
       });
 
-      const data = await response.json();
+      const raw = await response.text();
+      const data = raw ? JSON.parse(raw) : {};
+
       if (!response.ok) {
-        throw new Error(data.error || "Failed to query assistant.");
+        throw new Error(data.error || raw || "Failed to query assistant.");
       }
 
       setMessages((prev) => [
@@ -54,6 +56,7 @@ export function ChatSection() {
           sources: data.sources ?? [],
         },
       ]);
+
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unexpected error");
     } finally {
