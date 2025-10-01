@@ -128,7 +128,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const seeds = loadSeedDocuments(60);
+    const seeds = loadSeedDocuments(700);
     if (!seeds.length) {
       return NextResponse.json(
         { error: "No seed documents available. Ensure the crawl CSV is uploaded." },
