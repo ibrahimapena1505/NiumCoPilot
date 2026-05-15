@@ -4,6 +4,7 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import { ChatSection } from "../components/ChatSection";
 import { Hero } from "../components/Hero";
+import { FrameGenerator } from "../components/FrameGenerator";
 import { IntegrationStatus } from "../components/IntegrationStatus";
 import { PipelineDiagram } from "../components/PipelineDiagram";
 import { SeedDocsTable } from "../components/SeedDocsTable";
@@ -16,6 +17,7 @@ export default function Home() {
     <Container maxWidth="lg" sx={{ py: 6 }}>
       <Stack spacing={5}>
         <Hero />
+        <FrameGenerator />
         <div id="chat">
           <ChatSection />
         </div>
